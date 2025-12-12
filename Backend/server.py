@@ -3,7 +3,9 @@ from flask_cors import CORS
 import os
 import json
 import logging
-import requests
+import asyncio
+from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,10 +21,12 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не найден в переменных окружения")
 
+# Инициализация aiogram Bot
+bot = Bot(token=BOT_TOKEN)
+
 # Определяем путь к файлу каналов относительно корня проекта
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHANNELS_FILE = os.path.join(BASE_DIR, "TelegramBot", "channels.json")
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 
 def load_channels():
@@ -64,35 +68,34 @@ def send_article():
         success_count = 0
         failed_channels = []
         
-        # Отправляем статью во все выбранные каналы
-        for channel in channels_to_send:
-            try:
-                url = f"{TELEGRAM_API_URL}/sendMessage"
-                payload = {
-                    'chat_id': channel['id'],
-                    'text': article_text,
-                    'parse_mode': 'HTML'
-                }
-                
-                response = requests.post(url, json=payload, timeout=10)
-                
-                if response.status_code == 200:
+        # Асинхронная функция для отправки сообщений
+        async def send_messages():
+            nonlocal success_count, failed_channels
+            for channel in channels_to_send:
+                try:
+                    await bot.send_message(
+                        chat_id=channel['id'],
+                        text=article_text,
+                        parse_mode='HTML'
+                    )
                     success_count += 1
                     logger.info(f"Статья отправлена в канал: {channel['name']} ({channel['id']})")
-                else:
-                    error_msg = response.json().get('description', 'Unknown error')
+                except TelegramAPIError as e:
+                    error_msg = str(e)
                     failed_channels.append({
                         'channel': channel['name'],
                         'error': error_msg
                     })
                     logger.error(f"Ошибка отправки в канал {channel['name']}: {error_msg}")
-                    
-            except Exception as e:
-                failed_channels.append({
-                    'channel': channel.get('name', channel['id']),
-                    'error': str(e)
-                })
-                logger.error(f"Ошибка отправки в канал {channel['id']}: {e}")
+                except Exception as e:
+                    failed_channels.append({
+                        'channel': channel.get('name', channel['id']),
+                        'error': str(e)
+                    })
+                    logger.error(f"Ошибка отправки в канал {channel['id']}: {e}")
+        
+        # Запускаем асинхронную функцию
+        asyncio.run(send_messages())
         
         return jsonify({
             'success': True,
