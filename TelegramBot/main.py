@@ -1,8 +1,9 @@
 import os
 import json
 import logging
+import aiohttp
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -11,21 +12,38 @@ from dotenv import load_dotenv
 
 # Загрузка переменных окружения
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-env_path = os.path.join(BASE_DIR, '.env')
-if not os.path.exists(env_path):
-    env_path = os.path.join(BASE_DIR, 'BOT_TOKEN.env')
-if os.path.exists(env_path):
-    load_dotenv(env_path, override=True)
-else:
+BACKEND_DIR = os.path.join(BASE_DIR, 'Backend')
+
+# Список возможных путей к файлам с переменными окружения
+env_paths = [
+    os.path.join(BASE_DIR, '.env'),                    # Корень проекта
+    os.path.join(BACKEND_DIR, 'BOT_TOKEN.env'),       # Папка Backend
+    os.path.join(BASE_DIR, 'BOT_TOKEN.env'),          # Корень проекта
+]
+
+env_path = None
+for path in env_paths:
+    if os.path.exists(path):
+        env_path = path
+        load_dotenv(path, override=True)
+        break
+
+# Если ни один файл не найден, пробуем загрузить стандартный .env
+if env_path is None:
     load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Логируем путь к загруженному файлу
+if env_path:
+    logger.info(f"Загружен файл переменных окружения: {env_path}")
+
 # Инициализация бота и диспетчера
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
+    logger.error(f"BOT_TOKEN не найден. Проверенные пути: {env_paths}")
     raise ValueError("BOT_TOKEN не найден в переменных окружения")
 
 bot = Bot(token=BOT_TOKEN)
@@ -34,6 +52,9 @@ dp = Dispatcher(storage=storage)
 
 # Файл для хранения каналов
 CHANNELS_FILE = os.path.join(BASE_DIR, "TelegramBot", "channels.json")
+
+# URL API бэкенда
+API_URL = os.getenv('API_URL', 'http://localhost:5000')
 
 
 def load_channels():
@@ -92,17 +113,91 @@ class ChannelManagement(StatesGroup):
     waiting_for_channel = State()
 
 
-@dp.message(Command("start"))
+async def authorize_user(token: str, user: types.User):
+    """Отправляет запрос на авторизацию пользователя через API"""
+    user_data = {
+        'id': user.id,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'username': user.username,
+        'is_bot': user.is_bot,
+        'language_code': user.language_code
+    }
+    
+    logger.info(f"Попытка авторизации пользователя {user.id} с токеном {token[:10]}...")
+    logger.info(f"API URL: {API_URL}/api/auth/authorize")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{API_URL}/api/auth/authorize',
+                json={
+                    'token': token,
+                    'user_data': user_data
+                },
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                response_text = await response.text()
+                logger.info(f"Ответ API: статус {response.status}, тело: {response_text}")
+                
+                if response.status == 200:
+                    try:
+                        result = await response.json()
+                        success = result.get('success', False)
+                        logger.info(f"Результат авторизации: {success}")
+                        return success
+                    except Exception as e:
+                        logger.error(f"Ошибка парсинга JSON ответа: {e}, тело: {response_text}")
+                        return False
+                else:
+                    logger.error(f"Ошибка API: статус {response.status}, тело: {response_text}")
+                    return False
+    except aiohttp.ClientError as e:
+        logger.error(f"Ошибка соединения с API: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Ошибка авторизации через API: {e}", exc_info=True)
+        return False
+
+
+@dp.message(CommandStart())
 async def cmd_start(message: types.Message):
-    """Обработчик команды /start"""
-    await message.answer(
-        "🔥 <b>Phoenix Lab</b> - Управление каналами\n\n"
-        "Используйте команды:\n"
-        "/channels - Список каналов\n"
-        "/add_channel - Добавить канал\n"
-        "/help - Помощь",
-        parse_mode="HTML"
-    )
+    """Обработчик команды /start с поддержкой deep link"""
+    logger.info(f"Получена команда /start от пользователя {message.from_user.id} (@{message.from_user.username})")
+    args = message.text.split()[1:] if len(message.text.split()) > 1 else []
+    
+    # Если есть аргумент (токен из deep link)
+    if args:
+        token = args[0]
+        logger.info(f"Получен токен авторизации: {token[:10]}... от пользователя {message.from_user.id}")
+        
+        # Показываем кнопку авторизации
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Авторизоваться на сайте",
+                    callback_data=f"auth_{token}"
+                )
+            ]
+        ])
+        
+        await message.answer(
+            "🔐 <b>Авторизация на сайте Phoenix Lab</b>\n\n"
+            "Нажмите кнопку ниже, чтобы авторизоваться на сайте.\n"
+            "Токен действителен в течение 5 минут.",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+    else:
+        # Обычный старт
+        await message.answer(
+            "🔥 <b>Phoenix Lab</b> - Управление каналами\n\n"
+            "Используйте команды:\n"
+            "/channels - Список каналов\n"
+            "/add_channel - Добавить канал\n"
+            "/help - Помощь",
+            parse_mode="HTML"
+        )
 
 
 @dp.message(Command("help"))
@@ -253,6 +348,35 @@ async def remove_channel_callback(callback: types.CallbackQuery):
         await callback.answer(f"Ошибка: {msg}")
 
 
+@dp.callback_query(lambda c: c.data.startswith("auth_"))
+async def auth_callback(callback: types.CallbackQuery):
+    """Обрабатывает нажатие кнопки авторизации"""
+    token = callback.data.replace("auth_", "")
+    user = callback.from_user
+    
+    await callback.answer("Обработка авторизации...")
+    
+    # Отправляем запрос на авторизацию
+    success = await authorize_user(token, user)
+    
+    if success:
+        await callback.message.edit_text(
+            "✅ <b>Авторизация успешна!</b>\n\n"
+            "Вы успешно авторизованы на сайте Phoenix Lab.\n"
+            "Вернитесь на сайт и обновите страницу.",
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(
+            "❌ <b>Ошибка авторизации</b>\n\n"
+            "Не удалось авторизоваться. Возможные причины:\n"
+            "• Токен истек (действителен 5 минут)\n"
+            "• Ошибка связи с сервером\n\n"
+            "Попробуйте получить новую ссылку на сайте.",
+            parse_mode="HTML"
+        )
+
+
 @dp.message()
 async def handle_other_messages(message: types.Message, state: FSMContext):
     """Обработка прочих сообщений"""
@@ -272,12 +396,18 @@ async def handle_other_messages(message: types.Message, state: FSMContext):
 
 async def main():
     """Запуск бота"""
-    logger.info("Бот запущен")
-    channels = load_channels()
-    logger.info(f"Настроено каналов: {len(channels)}")
-    if channels:
-        logger.info(f"Каналы: {', '.join([ch['name'] for ch in channels])}")
-    await dp.start_polling(bot)
+    try:
+        logger.info("Запуск бота...")
+        logger.info(f"Токен бота: {BOT_TOKEN[:10]}...{BOT_TOKEN[-5:]}")
+        channels = load_channels()
+        logger.info(f"Настроено каналов: {len(channels)}")
+        if channels:
+            logger.info(f"Каналы: {', '.join([ch['name'] for ch in channels])}")
+        logger.info("Бот готов к работе. Ожидание сообщений...")
+        await dp.start_polling(bot)
+    except Exception as e:
+        logger.error(f"Ошибка при запуске бота: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
