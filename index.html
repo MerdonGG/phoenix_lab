@@ -205,6 +205,48 @@
             box-shadow: 0 0 20px rgba(255, 102, 0, 0.6);
         }
 
+        .social-section {
+            margin-bottom: 30px;
+        }
+
+        .social-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .social-btn {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px 25px;
+            background: #ffffff;
+            border: 2px solid #ff6600;
+            border-radius: 10px;
+            color: #ff6600;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .social-btn:hover {
+            background: #ffffff;
+            color: #ff6600;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 255, 255, 0.4);
+        }
+
+        body.dark-theme .social-btn {
+            background: #000000;
+        }
+
+        body.dark-theme .social-btn:hover {
+            background: #ff6600;
+            color: #000000;
+        }
+
         .submit-btn {
             width: 100%;
             padding: 18px;
@@ -335,6 +377,14 @@
                 width: 100%;
             }
 
+            .social-buttons {
+                flex-direction: column;
+            }
+
+            .social-btn {
+                width: 100%;
+            }
+
             .theme-toggle {
                 position: relative;
                 margin-bottom: 20px;
@@ -366,9 +416,18 @@
             <div class="style-section">
                 <label>Стиль рерайта</label>
                 <div class="style-buttons">
-                    <button class="style-btn" data-style="vk">Вконтакте</button>
-                    <button class="style-btn" data-style="telegram">Telegram</button>
-                    <button class="style-btn" data-style="instagram">Instagram</button>
+                    <button class="style-btn" data-style="scientific">Научно-деловой стиль</button>
+                    <button class="style-btn" data-style="meme">Мемный стиль</button>
+                    <button class="style-btn" data-style="casual">Повседневный стиль</button>
+                </div>
+            </div>
+
+            <div class="social-section">
+                <label>Публикация в соцсетях</label>
+                <div class="social-buttons">
+                    <button class="social-btn" id="social-vk">Вконтакте</button>
+                    <button class="social-btn" id="social-telegram">Telegram</button>
+                    <button class="social-btn" id="social-instagram">Instagram</button>
                 </div>
             </div>
 
@@ -424,6 +483,26 @@
             });
         });
 
+        // Обработка кнопок социальных сетей
+        const socialVk = document.getElementById('social-vk');
+        const socialTelegram = document.getElementById('social-telegram');
+        const socialInstagram = document.getElementById('social-instagram');
+
+        socialVk.addEventListener('click', () => {
+            // Здесь будет логика публикации в Вконтакте
+            alert('Публикация в Вконтакте');
+        });
+
+        socialTelegram.addEventListener('click', () => {
+            // Здесь будет логика публикации в Telegram
+            alert('Публикация в Telegram');
+        });
+
+        socialInstagram.addEventListener('click', () => {
+            // Здесь будет логика публикации в Instagram
+            alert('Публикация в Instagram');
+        });
+
         // Обработка отправки формы
         submitBtn.addEventListener('click', () => {
             const url = urlInput.value.trim();
@@ -454,9 +533,9 @@
 
         function getStyleName(style) {
             const styles = {
-                'vk': 'Вконтакте',
-                'telegram': 'Telegram',
-                'instagram': 'Instagram'
+                'scientific': 'Научно-деловой стиль',
+                'meme': 'Мемный стиль',
+                'casual': 'Повседневный стиль'
             };
             return styles[style] || style;
         }
