@@ -1,5 +1,9 @@
 # Phoenix Lab
 
+<div align="center">
+  <img src="Frontend/public/logo.png" alt="Phoenix Lab Logo" width="200" />
+</div>
+
 Одностраничный веб-сайт для AI рерайта статей с интеграцией Telegram для рассылки.
 
 ## Структура проекта
