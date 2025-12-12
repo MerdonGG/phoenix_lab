@@ -100,6 +100,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState('')
   const [showResult, setShowResult] = useState(false)
+  const [images, setImages] = useState<{
+    original: string | null
+    pexels: string | null
+    generated: string | null
+  } | null>(null)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [showGif, setShowGif] = useState(false)
   const [gifKey, setGifKey] = useState(0)
   const [showLoadingTest, setShowLoadingTest] = useState(false)
@@ -279,6 +285,17 @@ export default function Home() {
 
       if (response.ok && data.success) {
         setResult(data.rewritten_text)
+        setImages(data.images || null)
+        // По умолчанию выбираем оригинальное изображение, если есть
+        if (data.images?.original) {
+          setSelectedImage('original')
+        } else if (data.images?.pexels) {
+          setSelectedImage('pexels')
+        } else if (data.images?.generated) {
+          setSelectedImage('generated')
+        } else {
+          setSelectedImage(null)
+        }
         setShowResult(true)
         setLoading(false)
       } else {
@@ -471,6 +488,58 @@ export default function Home() {
         <div className={`result-section ${showResult ? 'show' : ''}`}>
           <div className="result-box">
             <div className="result-title">Результат рерайта:</div>
+            
+            {/* Выбор изображения */}
+            {images && (
+              <div className="image-selection">
+                <h3 className="image-selection-title">Выберите изображение для статьи:</h3>
+                <div className="image-options">
+                  {images.original && (
+                    <div 
+                      className={`image-option ${selectedImage === 'original' ? 'selected' : ''}`}
+                      onClick={() => setSelectedImage('original')}
+                    >
+                      <img src={images.original} alt="Оригинальное изображение" />
+                      <div className="image-label">Оригинальное</div>
+                    </div>
+                  )}
+                  {images.pexels && (
+                    <div 
+                      className={`image-option ${selectedImage === 'pexels' ? 'selected' : ''}`}
+                      onClick={() => setSelectedImage('pexels')}
+                    >
+                      <img src={images.pexels} alt="Изображение из API" />
+                      <div className="image-label">Из API</div>
+                    </div>
+                  )}
+                  {images.generated && (
+                    <div 
+                      className={`image-option ${selectedImage === 'generated' ? 'selected' : ''}`}
+                      onClick={() => setSelectedImage('generated')}
+                    >
+                      <img src={images.generated} alt="Сгенерированное изображение" />
+                      <div className="image-label">Сгенерированное</div>
+                    </div>
+                  )}
+                  {!images.original && !images.pexels && !images.generated && (
+                    <div className="no-images-message">
+                      <p>⚠️ Изображения не найдены. Статья будет отправлена без изображения.</p>
+                    </div>
+                  )}
+                </div>
+                {selectedImage && images[selectedImage as keyof typeof images] && (
+                  <div className="selected-image-preview">
+                    <p>Выбрано: <strong>{selectedImage === 'original' ? 'Оригинальное' : selectedImage === 'pexels' ? 'Из Pexels' : 'Сгенерированное'}</strong></p>
+                    <img 
+                      src={images[selectedImage as keyof typeof images]!} 
+                      alt="Выбранное изображение" 
+                      className="preview-image"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            
             <div className="result-text">{result}</div>
             {result && (
               <button 
@@ -484,7 +553,10 @@ export default function Home() {
                         'Content-Type': 'application/json',
                       },
                       body: JSON.stringify({
-                        article_text: result
+                        article_text: result,
+                        image_url: selectedImage && images && images[selectedImage as keyof typeof images] 
+                          ? images[selectedImage as keyof typeof images] 
+                          : null
                       })
                     })
                     const data = await response.json()

@@ -353,6 +353,113 @@ body.dark-theme .result-box {
     border: 2px solid #ff6600;
 }
 
+/* Выбор изображений */
+.image-selection {
+    margin: 20px 0;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 102, 0, 0.3);
+}
+
+body.dark-theme .image-selection {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 102, 0, 0.5);
+}
+
+.image-selection-title {
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    color: #ff6600;
+}
+
+body.dark-theme .image-selection-title {
+    color: #ff6600;
+}
+
+.image-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.image-option {
+    position: relative;
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.image-option:hover {
+    transform: scale(1.05);
+    border-color: #ff6600;
+}
+
+.image-option.selected {
+    border-color: #ff6600;
+    box-shadow: 0 0 15px rgba(255, 102, 0, 0.5);
+}
+
+.image-option img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    display: block;
+}
+
+.image-label {
+    padding: 8px;
+    text-align: center;
+    font-size: 0.9rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: #ffffff;
+}
+
+body.dark-theme .image-label {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.no-images-message {
+    grid-column: 1 / -1;
+    padding: 20px;
+    text-align: center;
+    background: rgba(255, 102, 0, 0.1);
+    border: 1px solid rgba(255, 102, 0, 0.3);
+    border-radius: 8px;
+    color: #ff6600;
+}
+
+body.dark-theme .no-images-message {
+    background: rgba(255, 102, 0, 0.05);
+    border-color: rgba(255, 102, 0, 0.5);
+}
+
+.selected-image-preview {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(255, 102, 0, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 102, 0, 0.3);
+}
+
+.selected-image-preview p {
+    margin-bottom: 10px;
+    color: #ff6600;
+}
+
+.preview-image {
+    width: 100%;
+    max-width: 500px;
+    height: auto;
+    border-radius: 8px;
+    display: block;
+    margin: 0 auto;
+}
+
 .result-title {
     color: #ffffff;
     font-size: 1.2rem;

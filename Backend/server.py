@@ -8,6 +8,7 @@ import secrets
 import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 from openai import OpenAI
@@ -340,6 +341,310 @@ def extract_text_from_url(url):
         raise
 
 
+def extract_image_from_url(url):
+    """Извлекает изображение из статьи (og:image, article:image, или первое крупное изображение)"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        # Приоритет 1: Open Graph изображение
+        og_image = soup.find('meta', property='og:image')
+        if og_image and og_image.get('content'):
+            image_url = og_image.get('content')
+            # Если относительный URL, делаем абсолютным
+            if image_url.startswith('//'):
+                image_url = 'https:' + image_url
+            elif image_url.startswith('/'):
+                image_url = urljoin(url, image_url)
+            logger.info(f"Найдено og:image: {image_url}")
+            return image_url
+        
+        # Приоритет 2: article:image
+        article_image = soup.find('meta', property='article:image')
+        if article_image and article_image.get('content'):
+            image_url = article_image.get('content')
+            if image_url.startswith('//'):
+                image_url = 'https:' + image_url
+            elif image_url.startswith('/'):
+                image_url = urljoin(url, image_url)
+            logger.info(f"Найдено article:image: {image_url}")
+            return image_url
+        
+        # Приоритет 3: Первое крупное изображение в статье
+        images = soup.find_all('img')
+        for img in images:
+            src = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
+            if not src:
+                continue
+            
+            # Пропускаем маленькие изображения (иконки, логотипы)
+            width = img.get('width')
+            height = img.get('height')
+            if width and height:
+                try:
+                    if int(width) < 200 or int(height) < 200:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            
+            # Пропускаем логотипы и иконки по классам/alt
+            img_class = img.get('class', [])
+            img_alt = (img.get('alt') or '').lower()
+            if any(skip in str(img_class).lower() or skip in img_alt for skip in ['logo', 'icon', 'avatar', 'button']):
+                continue
+            
+            # Делаем URL абсолютным
+            if src.startswith('//'):
+                image_url = 'https:' + src
+            elif src.startswith('/'):
+                image_url = urljoin(url, src)
+            elif not src.startswith('http'):
+                image_url = urljoin(url, src)
+            else:
+                image_url = src
+            
+            logger.info(f"Найдено изображение в статье: {image_url}")
+            return image_url
+        
+        logger.warning(f"Изображение не найдено в статье: {url}")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка извлечения изображения из URL {url}: {e}")
+        return None
+
+
+def extract_keywords_for_image_search(article_text, rewritten_text=None):
+    """Извлекает ключевые слова из статьи для поиска изображения"""
+    import re
+    
+    # Служебные слова, которые нужно пропускать
+    stop_words = {
+        'регистрация', 'пройдена', 'успешно', 'пожалуйста', 'перейдите', 'нажмите',
+        'вход', 'войти', 'выход', 'выйти', 'далее', 'продолжить', 'отмена',
+        'это', 'этот', 'эта', 'эти', 'такой', 'такая', 'такие',
+        'быть', 'есть', 'был', 'была', 'было', 'были',
+        'и', 'в', 'на', 'с', 'по', 'для', 'из', 'от', 'к', 'о', 'об', 'со', 'во',
+        'как', 'что', 'где', 'когда', 'кто', 'куда', 'откуда',
+        'не', 'нет', 'ни', 'без', 'про', 'при', 'над', 'под', 'за', 'перед'
+    }
+    
+    # Пробуем извлечь заголовок (первая строка или строка с заглавными буквами)
+    lines = article_text.split('\n')
+    title_candidates = []
+    
+    for line in lines[:5]:  # Проверяем первые 5 строк
+        line = line.strip()
+        if len(line) > 10 and len(line) < 200:  # Разумная длина для заголовка
+            # Если строка содержит много заглавных букв или короткая - вероятно заголовок
+            if line[0].isupper() or len(line.split()) <= 10:
+                title_candidates.append(line)
+    
+    # Используем первый подходящий заголовок или начало статьи
+    text_to_analyze = title_candidates[0] if title_candidates else article_text
+    
+    # Если есть переписанный текст, используем его (он более структурирован)
+    if rewritten_text:
+        rewritten_lines = rewritten_text.split('\n')
+        for line in rewritten_lines[:3]:
+            line = line.strip()
+            if len(line) > 10 and len(line) < 200:
+                if line[0].isupper() or '**' in line:  # Markdown заголовки
+                    text_to_analyze = line
+                    break
+    
+    # Убираем markdown разметку и спецсимволы
+    text_to_analyze = re.sub(r'\*\*|\*|#|`|\[|\]|\(|\)', '', text_to_analyze)
+    text_to_analyze = re.sub(r'[^\w\s]', ' ', text_to_analyze)
+    
+    # Разбиваем на слова и фильтруем
+    words = text_to_analyze.split()
+    keywords = []
+    
+    for word in words:
+        word_lower = word.lower().strip()
+        # Пропускаем служебные слова, короткие слова и числа
+        if (len(word_lower) > 3 and 
+            word_lower not in stop_words and 
+            not word_lower.isdigit() and
+            word_lower.isalpha()):
+            keywords.append(word_lower)
+            if len(keywords) >= 5:  # Берем первые 5 ключевых слов
+                break
+    
+    # Если не нашли ключевых слов, берем первые существительные из статьи
+    if len(keywords) < 3:
+        all_words = article_text.split()
+        for word in all_words:
+            word_lower = word.lower().strip()
+            word_clean = re.sub(r'[^\w]', '', word_lower)
+            if (len(word_clean) > 4 and 
+                word_clean not in stop_words and 
+                word_clean.isalpha()):
+                keywords.append(word_clean)
+                if len(keywords) >= 5:
+                    break
+    
+    # Если все еще нет ключевых слов, используем первые слова статьи
+    if len(keywords) < 2:
+        words = article_text.split()[:10]
+        for word in words:
+            word_clean = re.sub(r'[^\w]', '', word.lower().strip())
+            if len(word_clean) > 3 and word_clean.isalpha():
+                keywords.append(word_clean)
+                if len(keywords) >= 3:
+                    break
+    
+    result = ' '.join(keywords[:5])  # Максимум 5 ключевых слов
+    return result if result else 'news article'  # Fallback
+
+
+def search_image_from_pexels(query, api_key=None):
+    """Ищет изображение через Pexels API"""
+    if not api_key:
+        api_key = os.getenv('PEXELS_API_KEY')
+    
+    if not api_key:
+        logger.warning("PEXELS_API_KEY не настроен, пропускаем поиск через Pexels")
+        return None
+    
+    try:
+        # Используем весь запрос (уже обработанный функцией extract_keywords_for_image_search)
+        # Ограничиваем до 5 слов для лучших результатов
+        keywords = query.split()[:5]
+        search_query = ' '.join(keywords)
+        
+        logger.info(f"Поиск в Pexels по запросу: {search_query}")
+        
+        headers = {
+            'Authorization': api_key
+        }
+        params = {
+            'query': search_query,
+            'per_page': 1,
+            'orientation': 'landscape'
+        }
+        
+        response = requests.get('https://api.pexels.com/v1/search', headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        if data.get('photos') and len(data['photos']) > 0:
+            photo = data['photos'][0]
+            image_url = photo.get('src', {}).get('large') or photo.get('src', {}).get('original')
+            logger.info(f"Найдено изображение через Pexels: {image_url}")
+            return image_url
+        
+        logger.warning(f"Изображение не найдено через Pexels для запроса: {search_query}")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка поиска изображения через Pexels: {e}")
+        return None
+
+
+def search_image_from_unsplash(query):
+    """Ищет изображение через Unsplash Source API (бесплатный вариант без ключа)"""
+    try:
+        # Используем весь запрос (уже обработанный функцией extract_keywords_for_image_search)
+        # Ограничиваем до 5 слов
+        keywords = query.split()[:5]
+        search_query = ' '.join(keywords)
+        
+        # Unsplash Source API - генерирует случайное изображение по ключевым словам
+        # Формат: https://source.unsplash.com/1600x900/?keyword1,keyword2
+        # Убираем спецсимволы и оставляем только буквы и цифры
+        import re
+        clean_query = re.sub(r'[^a-zA-Zа-яА-Я0-9\s]', '', search_query)
+        search_terms = clean_query.replace(' ', ',').lower()[:50]  # Ограничиваем длину
+        
+        if not search_terms:
+            logger.warning("Не удалось извлечь ключевые слова для Unsplash")
+            return None
+        
+        url = f"https://source.unsplash.com/1600x900/?{search_terms}"
+        
+        # Проверяем, что URL доступен (HEAD запрос для проверки)
+        response = requests.head(url, timeout=15, allow_redirects=True)
+        final_url = response.url if hasattr(response, 'url') else url
+        
+        # Если получили редирект на изображение, значит оно доступно
+        if response.status_code in [200, 301, 302] and ('unsplash' in final_url or 'images.unsplash.com' in final_url):
+            logger.info(f"Найдено изображение через Unsplash: {final_url}")
+            return final_url
+        
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка поиска изображения через Unsplash: {e}")
+        return None
+
+
+def generate_image_with_kandinsky(prompt, api_key=None, project_id=None):
+    """Генерирует изображение через Kandinsky (Yandex Cloud)"""
+    if not api_key:
+        api_key = YANDEX_CLOUD_API_KEY
+    if not project_id:
+        project_id = YANDEX_CLOUD_PROJECT
+    
+    if not api_key:
+        logger.warning("YANDEX_CLOUD_API_KEY не настроен, пропускаем генерацию через Kandinsky")
+        return None
+    
+    try:
+        # Используем Yandex Cloud Foundation Models API для генерации изображений
+        # Kandinsky доступен через этот API
+        url = "https://llm.api.cloud.yandex.net/foundationModels/v1/imageGeneration"
+        
+        headers = {
+            'Authorization': f'Api-Key {api_key}',
+            'Content-Type': 'application/json',
+            'x-folder-id': project_id
+        }
+        
+        # Упрощаем промпт для генерации (первые 30 слов для лучшего качества)
+        simple_prompt = ' '.join(prompt.split()[:30])
+        
+        # Формируем промпт для генерации изображения
+        image_prompt = f"Изображение на тему: {simple_prompt}"
+        
+        payload = {
+            'model': 'kandinsky',
+            'prompt': image_prompt,
+            'width': 1024,
+            'height': 1024,
+            'num_images': 1
+        }
+        
+        logger.info(f"Попытка генерации изображения через Kandinsky с промптом: {image_prompt[:50]}...")
+        response = requests.post(url, headers=headers, json=payload, timeout=90)
+        
+        logger.info(f"Kandinsky API ответил со статусом: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            # В зависимости от формата ответа API
+            image_url = data.get('imageUrl') or data.get('url') or data.get('image') or data.get('result', {}).get('imageUrl')
+            if image_url:
+                logger.info(f"Изображение сгенерировано через Kandinsky: {image_url}")
+                return image_url
+            else:
+                logger.warning(f"Kandinsky вернул успешный ответ, но без URL изображения. Ответ: {data}")
+        
+        # Если endpoint не найден, возможно используется другой API или недоступен в тарифе
+        if response.status_code == 404:
+            logger.warning("Kandinsky endpoint не найден (404). Генерация изображений может быть недоступна в вашем тарифе Yandex Cloud.")
+            logger.info("Рекомендуется использовать оригинальное изображение или изображение из Pexels/Unsplash")
+        
+        logger.warning(f"Не удалось сгенерировать изображение через Kandinsky. Статус: {response.status_code}, ответ: {response.text[:300]}")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка генерации изображения через Kandinsky: {e}", exc_info=True)
+        return None
+
+
 def rewrite_article_with_yandex(article_text, style):
     """Обрабатывает статью через Yandex Cloud API"""
     if not yandex_client:
@@ -362,7 +667,36 @@ def rewrite_article_with_yandex(article_text, style):
             input=full_prompt,
         )
         
-        return response.output_text
+        result_text = response.output_text
+        
+        # Очищаем результат от упоминаний Pexels, Unsplash и других технических терминов
+        # которые могут случайно попасть в текст
+        import re
+        # Убираем упоминания о Pexels, Unsplash, API и других технических терминах
+        unwanted_patterns = [
+            r'\bpexels\b',
+            r'\bPexels\b',
+            r'\bPEXELS\b',
+            r'\bunsplash\b',
+            r'\bUnsplash\b',
+            r'\bUNSPLASH\b',
+            r'\bapi\s+ключ\b',
+            r'\bAPI\s+ключ\b',
+            r'\bизображение\s+из\s+pexels\b',
+            r'\bизображение\s+из\s+unsplash\b',
+            r'\bфото\s+из\s+pexels\b',
+            r'\bфото\s+из\s+unsplash\b',
+        ]
+        
+        for pattern in unwanted_patterns:
+            result_text = re.sub(pattern, '', result_text, flags=re.IGNORECASE)
+        
+        # Убираем лишние пробелы и переносы строк
+        result_text = re.sub(r'\s+', ' ', result_text)
+        result_text = re.sub(r'\n\s*\n', '\n\n', result_text)
+        result_text = result_text.strip()
+        
+        return result_text
     except Exception as e:
         logger.error(f"Ошибка обработки статьи через Yandex Cloud API: {e}", exc_info=True)
         raise
@@ -403,12 +737,50 @@ def rewrite_article():
         rewritten_text = rewrite_article_with_yandex(article_text, style)
         logger.info(f"Статья обработана, длина результата: {len(rewritten_text)} символов")
         
+        # Получаем три варианта изображений
+        logger.info("Начинаем получение изображений...")
+        
+        # 1. Изображение из оригинальной статьи
+        logger.info("Извлечение изображения из оригинальной статьи...")
+        original_image = extract_image_from_url(url)
+        logger.info(f"Оригинальное изображение: {'найдено' if original_image else 'не найдено'}")
+        
+        # 2. Поиск через Pexels API или Unsplash
+        # Извлекаем ключевые слова из статьи (пропускаем служебные слова в начале)
+        search_query = extract_keywords_for_image_search(article_text, rewritten_text)
+        logger.info(f"Поиск изображения через API для запроса: {search_query[:50]}...")
+        
+        pexels_image = search_image_from_pexels(search_query)
+        if not pexels_image:
+            # Если Pexels не сработал, пробуем Unsplash
+            logger.info("Pexels не вернул изображение, пробуем Unsplash...")
+            pexels_image = search_image_from_unsplash(search_query)
+            if pexels_image:
+                logger.info("Найдено изображение через Unsplash")
+        
+        logger.info(f"Изображение из API: {'найдено' if pexels_image else 'не найдено'}")
+        
+        # 3. Генерация через Kandinsky (используем начало статьи как промпт)
+        generation_prompt = ' '.join(rewritten_text.split()[:30])  # Первые 30 слов переписанной статьи
+        logger.info(f"Генерация изображения через Kandinsky с промптом: {generation_prompt[:50]}...")
+        generated_image = generate_image_with_kandinsky(generation_prompt)
+        logger.info(f"Сгенерированное изображение: {'получено' if generated_image else 'не получено'}")
+        
+        images = {
+            'original': original_image,
+            'pexels': pexels_image,
+            'generated': generated_image
+        }
+        
+        logger.info(f"Итоговые изображения: original={bool(original_image)}, pexels={bool(pexels_image)}, generated={bool(generated_image)}")
+        
         return jsonify({
             'success': True,
             'original_text': article_text[:1000] + '...' if len(article_text) > 1000 else article_text,
             'rewritten_text': rewritten_text,
             'url': url,
-            'style': style
+            'style': style,
+            'images': images
         }), 200
         
     except Exception as e:
@@ -431,6 +803,7 @@ def send_article():
     try:
         data = request.json
         article_text = data.get('article_text', '')
+        image_url = data.get('image_url')  # URL выбранного изображения
         selected_channels = data.get('channels', [])  # Список ID каналов для отправки
         
         if not article_text.strip():
@@ -459,11 +832,57 @@ def send_article():
             try:
                 for channel in channels_to_send:
                     try:
-                        await current_bot.send_message(
-                            chat_id=channel['id'],
-                            text=article_text,
-                            parse_mode='HTML'
-                        )
+                        # Отправляем сообщение с изображением, если оно есть
+                        if image_url and image_url.strip():
+                            try:
+                                # Telegram может принимать URL напрямую, но лучше проверить
+                                # Если URL не работает, можно скачать изображение и отправить как файл
+                                logger.info(f"Попытка отправить изображение {image_url[:50]}... в канал {channel['name']}")
+                                
+                                await current_bot.send_photo(
+                                    chat_id=channel['id'],
+                                    photo=image_url,
+                                    caption=article_text[:1024],  # Ограничиваем длину подписи (макс 1024 символа)
+                                    parse_mode='HTML'
+                                )
+                                logger.info(f"✅ Статья с изображением отправлена в канал: {channel['name']} ({channel['id']})")
+                            except Exception as photo_error:
+                                # Если не удалось отправить с фото, пробуем скачать и отправить как файл
+                                logger.warning(f"Не удалось отправить фото по URL в {channel['name']}: {photo_error}")
+                                try:
+                                    # Пробуем скачать изображение и отправить как файл
+                                    import aiohttp
+                                    async with aiohttp.ClientSession() as session:
+                                        async with session.get(image_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                                            if resp.status == 200:
+                                                image_data = await resp.read()
+                                                from io import BytesIO
+                                                photo_file = BytesIO(image_data)
+                                                photo_file.name = 'image.jpg'
+                                                
+                                                await current_bot.send_photo(
+                                                    chat_id=channel['id'],
+                                                    photo=photo_file,
+                                                    caption=article_text[:1024],
+                                                    parse_mode='HTML'
+                                                )
+                                                logger.info(f"✅ Статья с изображением (скачанным) отправлена в канал: {channel['name']}")
+                                            else:
+                                                raise Exception(f"Не удалось скачать изображение: статус {resp.status}")
+                                except Exception as download_error:
+                                    # Если и скачивание не помогло, отправляем только текст
+                                    logger.warning(f"Не удалось отправить фото (скачивание тоже не помогло) в {channel['name']}: {download_error}, отправляем только текст")
+                                    await current_bot.send_message(
+                                        chat_id=channel['id'],
+                                        text=article_text,
+                                        parse_mode='HTML'
+                                    )
+                        else:
+                            await current_bot.send_message(
+                                chat_id=channel['id'],
+                                text=article_text,
+                                parse_mode='HTML'
+                            )
                         success_count += 1
                         logger.info(f"Статья отправлена в канал: {channel['name']} ({channel['id']})")
                     except TelegramAPIError as e:
