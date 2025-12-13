@@ -41,11 +41,31 @@ pip install -r Backend/requirements.txt
 pip install -r TelegramBot/requirements.txt
 ```
 
-2. Создайте файл `.env` в корне проекта:
-```
-BOT_TOKEN=your_bot_token_here
-PORT=5000
-```
+2. Создайте файлы с переменными окружения:
+   
+   **В корне проекта создайте `.env` или `BOT_TOKEN.env`:**
+   ```
+   BOT_TOKEN=your_bot_token_here
+   PORT=5000
+   ```
+   
+   **В папке `Backend/` создайте `openrouter.env`:**
+   ```
+   OPENROUTER_API_KEY=your_openrouter_api_key
+   OPENROUTER_MODEL=qwen/qwen2.5-72b-instruct
+   OPENROUTER_API_URL=https://openrouter.ai/api/v1/chat/completions
+   ```
+   
+   **Или используйте примеры файлов:**
+   - `env.example` — пример для корневого `.env`
+   - `Backend/openrouter.env.example` — пример для `Backend/openrouter.env`
+
+**Настройка OpenRouter API:**
+1. Зарегистрируйтесь на [OpenRouter.ai](https://openrouter.ai/)
+2. Создайте API ключ в разделе Keys
+3. Добавьте `OPENROUTER_API_KEY` в файл окружения
+4. Опционально: укажите модель в `OPENROUTER_MODEL` (по умолчанию: `qwen/qwen2.5-72b-instruct`)
+5. Опционально: укажите URL в `OPENROUTER_API_URL` (по умолчанию: `https://openrouter.ai/api/v1/chat/completions`)
 
 ### Frontend
 
@@ -98,5 +118,6 @@ npm run dev
 ## API Endpoints
 
 - `GET /api/channels` - получить список каналов
+- `POST /api/rewrite-article` - рерайтить статью через OpenRouter API (требует url и style)
 - `POST /api/send-article` - отправить статью в каналы
 - `GET /api/health` - проверка работоспособности
