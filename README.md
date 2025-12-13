@@ -378,10 +378,6 @@ YANDEX_CLOUD_ASSISTANT_ID=your_assistant_id
 - **OpenRouter** — доступ к Qwen моделям
 - **Yandex Cloud** — YandexGPT API
 
-## 📝 Лицензия
-
-Проект создан для внутреннего использования.
-
 ## 🤝 Поддержка
 
 При возникновении проблем:
@@ -397,6 +393,3 @@ YANDEX_CLOUD_ASSISTANT_ID=your_assistant_id
 
 ---
 
-<div align="center">
-  <p>Сделано с ❤️ для Phoenix Lab</p>
-</div>
