@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
+import AuthMenu from './components/AuthMenu'
 
 interface Channel {
   id: string
@@ -13,6 +14,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 export default function Home() {
   const [isDarkTheme, setIsDarkTheme] = useState(false)
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
+  const [selectedProvider, setSelectedProvider] = useState<string>('qwen') // 'qwen' или 'yandex'
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [resultText, setResultText] = useState('')
@@ -21,6 +23,10 @@ export default function Home() {
   const [availableChannels, setAvailableChannels] = useState<Channel[]>([])
   const [selectedChannels, setSelectedChannels] = useState<string[]>([])
   const [currentArticleText, setCurrentArticleText] = useState('')
+  const [showAuthMenu, setShowAuthMenu] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [showGif, setShowGif] = useState(false)
+  const [gifKey, setGifKey] = useState(0)
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'light'
@@ -28,8 +34,24 @@ export default function Home() {
       setIsDarkTheme(true)
       document.body.classList.add('dark-theme')
     }
+    
+    // Проверяем сохраненного пользователя
+    const savedUser = localStorage.getItem('telegram_user')
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser))
+      } catch (e) {
+        console.error('Ошибка загрузки данных пользователя:', e)
+      }
+    }
+    
     loadChannels()
   }, [])
+
+  const handleLogin = (userData: any) => {
+    setUser(userData)
+    setShowAuthMenu(false)
+  }
 
   const toggleTheme = () => {
     const newTheme = !isDarkTheme
@@ -65,6 +87,10 @@ export default function Home() {
     setSelectedStyle(style)
   }
 
+  const handleProviderSelect = (provider: string) => {
+    setSelectedProvider(provider)
+  }
+
   const handleSubmit = async () => {
     if (!url.trim()) {
       alert('Пожалуйста, введите URL статьи')
@@ -88,7 +114,8 @@ export default function Home() {
         },
         body: JSON.stringify({
           url: url,
-          style: selectedStyle
+          style: selectedStyle,
+          provider: selectedProvider
         })
       })
 
@@ -205,20 +232,90 @@ export default function Home() {
     }
   }
 
+  const handleLogoClick = () => {
+    // Предотвращаем повторный клик во время проигрывания гифки
+    if (showGif) {
+      console.log('Гифка уже воспроизводится, игнорируем клик')
+      return
+    }
+    
+    console.log('Клик по логотипу, запускаем гифку')
+    
+    // Сначала скрываем, чтобы сбросить состояние
+    setShowGif(false)
+    setGifKey(prev => prev + 1)
+    
+    // Затем показываем гифку через небольшую задержку для правильной перезагрузки
+    setTimeout(() => {
+      setShowGif(true)
+      console.log('Показываем гифку')
+    }, 50)
+    
+    // Возвращаем логотип через 11.24 секунды (полная длительность гифки)
+    setTimeout(() => {
+      setShowGif(false)
+      console.log('Гифка завершена, возвращаем логотип')
+    }, 11290) // 11240 + 50 (задержка показа)
+  }
+
+  const handleGifLoad = () => {
+    console.log('Гифка успешно загружена')
+  }
+
+  const handleGifError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    console.error('Ошибка загрузки гифки')
+    const target = e.target as HTMLImageElement
+    // Пробуем загрузить без query параметра
+    target.src = '/assets/горение.gif'
+  }
+
   return (
     <div className="container">
       <div className="header">
-        <button className="theme-toggle" onClick={toggleTheme}>
-          {isDarkTheme ? '☀️ Светлая' : '🌙 Тёмная'}
-        </button>
-        <Image
-          src="/logo.png"
-          alt="Phoenix Lab Logo"
-          width={120}
-          height={120}
-          className="logo"
-          priority
-        />
+        <div className="header-controls">
+          <button className="auth-btn" onClick={() => setShowAuthMenu(true)}>
+            {user ? `👤 ${user.first_name}` : '🔐 Войти'}
+          </button>
+          <button className="theme-toggle" onClick={toggleTheme}>
+            {isDarkTheme ? '☀️ Светлая' : '🌙 Тёмная'}
+          </button>
+        </div>
+        <div 
+          className="logo-container"
+          onClick={handleLogoClick}
+          style={{ 
+            cursor: showGif ? 'default' : 'pointer'
+          }}
+        >
+          {showGif ? (
+            <img 
+              key={gifKey}
+              src="/assets/горение.gif"
+              alt="Phoenix Burning Animation" 
+              className="logo"
+              width={120}
+              height={120}
+              onLoad={handleGifLoad}
+              onError={handleGifError}
+              style={{ 
+                width: '120px', 
+                height: '120px', 
+                objectFit: 'contain', 
+                pointerEvents: 'none',
+                display: 'block'
+              }}
+            />
+          ) : (
+            <Image 
+              src="/logo.png"
+              alt="Phoenix Lab Logo" 
+              className="logo"
+              width={120}
+              height={120}
+              priority
+            />
+          )}
+        </div>
         <h1>Phoenix Lab</h1>
         <p className="subtitle">AI Рерайт Статей</p>
       </div>
@@ -235,6 +332,24 @@ export default function Home() {
             onChange={(e) => setUrl(e.target.value)}
             onKeyPress={handleKeyPress}
           />
+        </div>
+
+        <div className="provider-section">
+          <label>Провайдер AI</label>
+          <div className="style-buttons">
+            <button
+              className={`style-btn ${selectedProvider === 'qwen' ? 'active' : ''}`}
+              onClick={() => handleProviderSelect('qwen')}
+            >
+              Qwen
+            </button>
+            <button
+              className={`style-btn ${selectedProvider === 'yandex' ? 'active' : ''}`}
+              onClick={() => handleProviderSelect('yandex')}
+            >
+              YandexGPT
+            </button>
+          </div>
         </div>
 
         <div className="style-section">
@@ -280,10 +395,12 @@ export default function Home() {
           Рерайт статьи
         </button>
 
-        <div className={`loading ${loading ? 'show' : ''}`}>
-          <div className="spinner"></div>
-          <p>Обработка статьи...</p>
-        </div>
+        {loading && (
+          <div className="loading show">
+            <div className="spinner"></div>
+            <p>Обработка статьи...</p>
+          </div>
+        )}
 
         <div className={`result-section ${showResult ? 'show' : ''}`}>
           <div className="result-box">
@@ -313,6 +430,15 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Меню авторизации */}
+      {showAuthMenu && (
+        <AuthMenu 
+          isDark={isDarkTheme} 
+          onClose={() => setShowAuthMenu(false)}
+          onLogin={handleLogin}
+        />
+      )}
     </div>
   )
 }

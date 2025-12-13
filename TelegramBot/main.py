@@ -1,8 +1,9 @@
 import os
 import json
 import logging
+import aiohttp
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -34,6 +35,9 @@ dp = Dispatcher(storage=storage)
 
 # Файл для хранения каналов
 CHANNELS_FILE = os.path.join(BASE_DIR, "TelegramBot", "channels.json")
+
+# URL API бэкенда
+API_URL = os.getenv('API_URL', 'http://localhost:5000')
 
 
 def load_channels():
@@ -92,9 +96,82 @@ class ChannelManagement(StatesGroup):
     waiting_for_channel = State()
 
 
-@dp.message(Command("start"))
+async def authorize_user(token: str, user: types.User):
+    """Отправляет запрос на авторизацию пользователя через API"""
+    user_data = {
+        'id': user.id,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'username': user.username,
+        'is_bot': user.is_bot,
+        'language_code': user.language_code
+    }
+    
+    logger.info(f"Попытка авторизации пользователя {user.id} с токеном {token[:10]}...")
+    logger.info(f"API URL: {API_URL}/api/auth/authorize")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{API_URL}/api/auth/authorize',
+                json={
+                    'token': token,
+                    'user_data': user_data
+                },
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                response_text = await response.text()
+                logger.info(f"Ответ API: статус {response.status}, тело: {response_text}")
+                
+                if response.status == 200:
+                    try:
+                        result = await response.json()
+                        success = result.get('success', False)
+                        logger.info(f"Результат авторизации: {success}")
+                        return success
+                    except Exception as e:
+                        logger.error(f"Ошибка парсинга JSON ответа: {e}, тело: {response_text}")
+                        return False
+                else:
+                    logger.error(f"Ошибка авторизации: статус {response.status}, тело: {response_text}")
+                    return False
+    except aiohttp.ClientError as e:
+        logger.error(f"Ошибка подключения к API: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка при авторизации: {e}", exc_info=True)
+        return False
+
+
+@dp.message(CommandStart())
 async def cmd_start(message: types.Message):
-    """Обработчик команды /start"""
+    """Обработчик команды /start с поддержкой deep link"""
+    logger.info(f"Получена команда /start от пользователя {message.from_user.id} (@{message.from_user.username})")
+    
+    # Проверяем, есть ли токен в аргументах команды
+    if message.text and len(message.text.split()) > 1:
+        args = message.text.split()[1:]
+        if args:
+            token = args[0]
+            logger.info(f"Получен токен авторизации: {token[:10]}... от пользователя {message.from_user.id}")
+            
+            # Создаем кнопку для авторизации
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🔐 Авторизоваться на сайте",
+                    callback_data=f"auth_{token}"
+                )
+            ]])
+            
+            await message.answer(
+                "🔐 <b>Авторизация на сайте Phoenix Lab</b>\n\n"
+                "Нажмите кнопку ниже, чтобы авторизоваться на сайте:",
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+            return
+    
+    # Обычная команда /start без токена
     await message.answer(
         "🔥 <b>Phoenix Lab</b> - Управление каналами\n\n"
         "Используйте команды:\n"
@@ -251,6 +328,30 @@ async def remove_channel_callback(callback: types.CallbackQuery):
         )
     else:
         await callback.answer(f"Ошибка: {msg}")
+
+
+@dp.callback_query(lambda c: c.data.startswith("auth_"))
+async def auth_callback(callback: types.CallbackQuery):
+    """Обрабатывает авторизацию пользователя"""
+    token = callback.data.replace("auth_", "")
+    user = callback.from_user
+    
+    await callback.answer("Обработка авторизации...")
+    
+    success = await authorize_user(token, user)
+    
+    if success:
+        await callback.message.edit_text(
+            "✅ <b>Авторизация успешна!</b>\n\n"
+            "Теперь вы можете использовать все функции сайта Phoenix Lab.",
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(
+            "❌ <b>Ошибка авторизации</b>\n\n"
+            "Токен не найден или истек. Попробуйте снова через сайт.",
+            parse_mode="HTML"
+        )
 
 
 @dp.message()

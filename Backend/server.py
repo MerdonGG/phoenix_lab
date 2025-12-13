@@ -6,6 +6,8 @@ import logging
 import asyncio
 import re
 import requests
+import secrets
+import time
 from bs4 import BeautifulSoup
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
@@ -29,12 +31,25 @@ openrouter_env_path = os.path.join(BASE_DIR, 'Backend', 'openrouter.env')
 if os.path.exists(openrouter_env_path):
     load_dotenv(openrouter_env_path, override=True)
 
+# Загружаем yandex.env если существует
+yandex_env_path = os.path.join(BASE_DIR, 'Backend', 'yandex.env')
+if os.path.exists(yandex_env_path):
+    load_dotenv(yandex_env_path, override=True)
+
 app = Flask(__name__)
 CORS(app)  # Разрешаем CORS для запросов с сайта
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Опциональный импорт OpenAI для YandexGPT
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    logger.warning("OpenAI не установлен. YandexGPT будет недоступен. Установите: pip install openai")
 
 # Создаём папку TelegramBot если её нет
 TELEGRAM_BOT_DIR = os.path.join(BASE_DIR, "TelegramBot")
@@ -43,21 +58,45 @@ if not os.path.exists(TELEGRAM_BOT_DIR):
     logger.info(f"Создана папка: {TELEGRAM_BOT_DIR}")
 
 CHANNELS_FILE = os.path.join(TELEGRAM_BOT_DIR, "channels.json")
+AUTH_TOKENS_FILE = os.path.join(TELEGRAM_BOT_DIR, "auth_tokens.json")
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     logger.error(f"BOT_TOKEN не найден. Проверьте файл: {env_path}")
     raise ValueError("BOT_TOKEN не найден в переменных окружения")
 
-# OpenRouter API настройки
+# OpenRouter API настройки (для Qwen)
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 OPENROUTER_API_URL = os.getenv('OPENROUTER_API_URL', 'https://openrouter.ai/api/v1/chat/completions')
 OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'qwen/qwen2.5-72b-instruct')  # По умолчанию используем Qwen
 
+# YandexGPT API настройки
+YANDEX_CLOUD_API_KEY = os.getenv('YANDEX_CLOUD_API_KEY')
+YANDEX_CLOUD_PROJECT = os.getenv('YANDEX_CLOUD_PROJECT', 'b1goig30m707ojip72c7')
+YANDEX_CLOUD_ASSISTANT_ID = os.getenv('YANDEX_CLOUD_ASSISTANT_ID', 'fvtfdp5dm8r044bnumjl')
+
+# Инициализация YandexGPT клиента
+yandex_client = None
+if YANDEX_CLOUD_API_KEY and OPENAI_AVAILABLE:
+    try:
+        yandex_client = OpenAI(
+            api_key=YANDEX_CLOUD_API_KEY,
+            base_url="https://rest-assistant.api.cloud.yandex.net/v1",
+            project=YANDEX_CLOUD_PROJECT
+        )
+        logger.info("YandexGPT API клиент инициализирован")
+    except Exception as e:
+        yandex_client = None
+        logger.error(f"Ошибка инициализации YandexGPT API: {e}")
+elif not OPENAI_AVAILABLE:
+    logger.warning("OpenAI библиотека не установлена. YandexGPT будет недоступен. Установите: pip install openai")
+elif not YANDEX_CLOUD_API_KEY:
+    logger.warning("YANDEX_CLOUD_API_KEY не найден. YandexGPT будет недоступен.")
+
 logger.info("BOT_TOKEN успешно загружен")
 logger.info(f"Используется файл каналов: {CHANNELS_FILE}")
 if OPENROUTER_API_KEY:
-    logger.info("OpenRouter API настроен")
+    logger.info("OpenRouter API (Qwen) настроен")
     logger.info(f"OpenRouter модель: {OPENROUTER_MODEL}")
     logger.info(f"OpenRouter URL: {OPENROUTER_API_URL}")
 else:
@@ -78,6 +117,102 @@ def load_channels():
             logger.error(f"Ошибка загрузки каналов: {e}")
             return []
     return []
+
+
+# Хранилище токенов авторизации
+auth_tokens = {}
+
+def load_auth_tokens():
+    """Загружает токены из файла"""
+    global auth_tokens
+    if os.path.exists(AUTH_TOKENS_FILE):
+        try:
+            with open(AUTH_TOKENS_FILE, 'r', encoding='utf-8') as f:
+                loaded_tokens = json.load(f)
+                # Удаляем истекшие токены
+                current_time = time.time()
+                auth_tokens = {
+                    k: v for k, v in loaded_tokens.items()
+                    if v.get('expires_at', 0) > current_time
+                }
+                logger.info(f"Загружено активных токенов: {len(auth_tokens)}")
+        except json.JSONDecodeError:
+            logger.warning("Файл токенов поврежден, создаю новый")
+            auth_tokens = {}
+        except Exception as e:
+            logger.error(f"Ошибка загрузки токенов: {e}")
+            auth_tokens = {}
+    else:
+        auth_tokens = {}
+
+
+def save_auth_tokens():
+    """Сохраняет токены в файл"""
+    try:
+        os.makedirs(os.path.dirname(AUTH_TOKENS_FILE), exist_ok=True)
+        with open(AUTH_TOKENS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(auth_tokens, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Ошибка сохранения токенов: {e}")
+
+
+def generate_auth_token():
+    """Генерирует новый токен авторизации"""
+    global auth_tokens
+    load_auth_tokens()
+    
+    token = secrets.token_urlsafe(32)
+    expires_at = time.time() + 300  # Токен действителен 5 минут
+    auth_tokens[token] = {
+        'expires_at': expires_at,
+        'status': 'pending',  # pending, authorized, expired
+        'user_data': None
+    }
+    save_auth_tokens()
+    logger.info(f"Сгенерирован новый токен: {token[:10]}...")
+    return token
+
+
+def verify_auth_token(token):
+    """Проверяет токен и возвращает данные пользователя"""
+    load_auth_tokens()
+    
+    if token not in auth_tokens:
+        return None
+    
+    token_data = auth_tokens[token]
+    
+    # Проверяем срок действия
+    if token_data['expires_at'] < time.time():
+        del auth_tokens[token]
+        save_auth_tokens()
+        return None
+    
+    # Проверяем статус
+    if token_data['status'] != 'authorized':
+        return None
+    
+    return token_data.get('user_data')
+
+
+def authorize_token(token, user_data):
+    """Авторизует токен с данными пользователя"""
+    global auth_tokens
+    load_auth_tokens()
+    
+    if token not in auth_tokens:
+        return False
+    
+    auth_tokens[token]['status'] = 'authorized'
+    auth_tokens[token]['user_data'] = user_data
+    auth_tokens[token]['authorized_at'] = time.time()
+    save_auth_tokens()
+    logger.info(f"Токен {token[:10]}... успешно авторизован")
+    return True
+
+
+# Загружаем токены при старте
+load_auth_tokens()
 
 
 def clean_model_response(text):
@@ -216,6 +351,45 @@ def extract_article_text(url):
         raise
 
 
+def rewrite_article_with_yandex(article_text, style):
+    """Рерайтит статью через YandexGPT API"""
+    if not yandex_client:
+        raise ValueError("YandexGPT API не настроен. Добавьте YANDEX_CLOUD_API_KEY в .env")
+    
+    style_prompts = {
+        'scientific': 'Перепиши статью в научно-деловом стиле, сохраняя основную информацию и факты. Ответ должен быть на русском языке.',
+        'meme': 'Перепиши статью в мемном стиле, сделай её более развлекательной и юмористической. Ответ должен быть на русском языке.',
+        'casual': 'Перепиши статью в повседневном стиле, сделай её более простой и понятной для широкой аудитории. Ответ должен быть на русском языке.'
+    }
+    
+    prompt = style_prompts.get(style, style_prompts['casual'])
+    full_prompt = f"{prompt}\n\nВАЖНО: Весь ответ должен быть на русском языке. Не используй английский язык.\n\nТекст статьи:\n{article_text}"
+    
+    try:
+        # Ограничиваем длину текста
+        max_text_length = 12000
+        if len(article_text) > max_text_length:
+            article_text = article_text[:max_text_length] + "..."
+            full_prompt = f"{prompt}\n\nВАЖНО: Весь ответ должен быть на русском языке. Не используй английский язык.\n\nТекст статьи:\n{article_text}"
+        
+        response = yandex_client.responses.create(
+            prompt={
+                "id": YANDEX_CLOUD_ASSISTANT_ID,
+            },
+            input=full_prompt,
+        )
+        
+        result_text = response.output_text
+        
+        # Очищаем результат от мыслей модели и лишних комментариев
+        cleaned_text = clean_model_response(result_text)
+        
+        return cleaned_text
+    except Exception as e:
+        logger.error(f"Ошибка рерайта через YandexGPT: {e}")
+        raise ValueError(f"Ошибка подключения к YandexGPT API: {str(e)}")
+
+
 def rewrite_article_with_openrouter(article_text, style):
     """Рерайтит статью через OpenRouter API"""
     if not OPENROUTER_API_KEY:
@@ -322,7 +496,7 @@ def rewrite_article_with_openrouter(article_text, style):
 
 @app.route('/api/rewrite-article', methods=['POST'])
 def rewrite_article():
-    """Рерайтит статью через OpenRouter API"""
+    """Рерайтит статью через выбранный провайдер (Qwen или YandexGPT)"""
     try:
         if not request.json:
             return jsonify({'success': False, 'error': 'Отсутствует тело запроса'}), 400
@@ -330,6 +504,7 @@ def rewrite_article():
         data = request.json
         article_url = data.get('url', '')
         style = data.get('style', 'casual')
+        provider = data.get('provider', 'qwen')  # 'qwen' или 'yandex'
         
         if not article_url:
             logger.error("URL статьи не указан в запросе")
@@ -338,6 +513,10 @@ def rewrite_article():
         if style not in ['scientific', 'meme', 'casual']:
             logger.error(f"Неверный стиль рерайта: {style}")
             return jsonify({'success': False, 'error': 'Неверный стиль рерайта'}), 400
+        
+        if provider not in ['qwen', 'yandex']:
+            logger.error(f"Неверный провайдер: {provider}")
+            return jsonify({'success': False, 'error': 'Неверный провайдер. Используйте "qwen" или "yandex"'}), 400
         
         # Извлекаем текст статьи
         logger.info(f"Извлечение текста из URL: {article_url}")
@@ -356,18 +535,27 @@ def rewrite_article():
             logger.warning(f"Текст слишком короткий: {len(article_text)} символов")
             return jsonify({'success': False, 'error': f'Текст статьи слишком короткий ({len(article_text)} символов). Минимум 50 символов.'}), 400
         
-        # Рерайтим через OpenRouter
-        logger.info(f"Рерайт статьи в стиле: {style}, длина текста: {len(article_text)}")
+        # Рерайтим через выбранный провайдер
+        logger.info(f"Рерайт статьи через {provider} в стиле: {style}, длина текста: {len(article_text)}")
         try:
-            rewritten_text = rewrite_article_with_openrouter(article_text, style)
+            if provider == 'qwen':
+                if not OPENROUTER_API_KEY:
+                    return jsonify({'success': False, 'error': 'OpenRouter API не настроен. Добавьте OPENROUTER_API_KEY в .env'}), 400
+                rewritten_text = rewrite_article_with_openrouter(article_text, style)
+            elif provider == 'yandex':
+                if not yandex_client:
+                    return jsonify({'success': False, 'error': 'YandexGPT API не настроен. Добавьте YANDEX_CLOUD_API_KEY в .env'}), 400
+                rewritten_text = rewrite_article_with_yandex(article_text, style)
+            
             logger.info(f"Рерайт завершён, длина результата: {len(rewritten_text)} символов")
         except Exception as e:
-            logger.error(f"Ошибка рерайта через OpenRouter: {e}")
+            logger.error(f"Ошибка рерайта через {provider}: {e}")
             return jsonify({'success': False, 'error': f'Ошибка рерайта: {str(e)}'}), 500
         
         return jsonify({
             'success': True,
-            'text': rewritten_text
+            'text': rewritten_text,
+            'provider': provider
         }), 200
         
     except ValueError as e:
@@ -491,6 +679,82 @@ def get_channels():
 def health():
     """Проверка работоспособности сервера"""
     return jsonify({'status': 'ok'}), 200
+
+
+@app.route('/api/auth/generate-token', methods=['POST', 'OPTIONS'])
+def generate_token():
+    """Генерирует новый токен для авторизации через бота"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    try:
+        token = generate_auth_token()
+        return jsonify({
+            'success': True,
+            'token': token,
+            'expires_in': 300  # секунд
+        }), 200
+    except Exception as e:
+        logger.error(f"Ошибка генерации токена: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/verify-token', methods=['POST', 'OPTIONS'])
+def verify_token():
+    """Проверяет токен и возвращает данные пользователя"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    try:
+        data = request.json
+        token = data.get('token')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'Токен не предоставлен'}), 400
+        
+        user_data = verify_auth_token(token)
+        
+        if user_data:
+            return jsonify({
+                'success': True,
+                'authorized': True,
+                'user': user_data
+            }), 200
+        else:
+            return jsonify({
+                'success': True,
+                'authorized': False,
+                'message': 'Токен не найден или не авторизован'
+            }), 200
+            
+    except Exception as e:
+        logger.error(f"Ошибка проверки токена: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/authorize', methods=['POST', 'OPTIONS'])
+def authorize():
+    """Авторизует токен с данными пользователя (вызывается ботом)"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    try:
+        data = request.json
+        token = data.get('token')
+        user_data = data.get('user_data')
+        
+        if not token or not user_data:
+            return jsonify({'success': False, 'error': 'Недостаточно данных'}), 400
+        
+        if authorize_token(token, user_data):
+            logger.info(f"Токен {token[:10]}... успешно авторизован для пользователя {user_data.get('id')}")
+            return jsonify({'success': True}), 200
+        else:
+            return jsonify({'success': False, 'error': 'Токен не найден или истек'}), 404
+            
+    except Exception as e:
+        logger.error(f"Ошибка авторизации токена: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':

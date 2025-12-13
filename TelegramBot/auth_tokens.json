@@ -1,0 +1,70 @@
+{
+  "3h8IpSl8WMM2Cfr8jVBqp1lrSc9AT8ct0HBbqOdlzrs": {
+    "expires_at": 1765622728.7034245,
+    "status": "pending",
+    "user_data": null
+  },
+  "uNDjYOr37psULAYP6bUl5SJZZ7wcos8aGVzteoQtXJo": {
+    "expires_at": 1765622728.7387497,
+    "status": "pending",
+    "user_data": null
+  },
+  "P9fap4QoA2r1UhbCEWLR1Sf1Eu1sr_5dW-Iq6tvC0SM": {
+    "expires_at": 1765622767.7279115,
+    "status": "pending",
+    "user_data": null
+  },
+  "1C2kICnMUGytuobVH-dpBVZceivA5yAPzszmBygm0IY": {
+    "expires_at": 1765622767.7958744,
+    "status": "pending",
+    "user_data": null
+  },
+  "H7IX7vsz85o-rWcuWf7F_RG6ngxN-o-wocCmCXdI42w": {
+    "expires_at": 1765622774.924311,
+    "status": "pending",
+    "user_data": null
+  },
+  "ZHqzfl43uJd8t82-RCY35j6ntaKcAuteHUSNyktfr5c": {
+    "expires_at": 1765622775.248083,
+    "status": "pending",
+    "user_data": null
+  },
+  "4mkzUq5zUUaFGnNEua-sBQJ-aP8xi5FxQ1UCTi6fHqU": {
+    "expires_at": 1765622795.3789825,
+    "status": "pending",
+    "user_data": null
+  },
+  "ZWxztH0zPDQxLu2jKiFeEHsc9w9SN-c85TzvJ79i3Gg": {
+    "expires_at": 1765622795.6867828,
+    "status": "pending",
+    "user_data": null
+  },
+  "YyGMg_IsAPeAgpuIY4KhwWgWfNWBgVHBNZJrfWZp_YQ": {
+    "expires_at": 1765622928.3943655,
+    "status": "pending",
+    "user_data": null
+  },
+  "0e7vmabBIiygJUoVTkAb0EJK16LTXD3eDdO54G-YQiQ": {
+    "expires_at": 1765622928.467815,
+    "status": "pending",
+    "user_data": null
+  },
+  "us6Frk6IM9FrHCcTsBELUJ1pbj7ADtVVzAn2Uu3xh2k": {
+    "expires_at": 1765623023.5594041,
+    "status": "pending",
+    "user_data": null
+  },
+  "QDYIROMjohubIDkCLl6n7IK0eejrnLW2gPAnWcZKdOA": {
+    "expires_at": 1765623023.8857214,
+    "status": "authorized",
+    "user_data": {
+      "id": 5656102384,
+      "first_name": "русский",
+      "last_name": "1987",
+      "username": "glebpkov",
+      "is_bot": false,
+      "language_code": "ru"
+    },
+    "authorized_at": 1765622728.4409618
+  }
+}
