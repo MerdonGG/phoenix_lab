@@ -1,0 +1,33 @@
+{
+  "PFbMBpVqn540F9DPLnwJ9jjuejKfwIHYKrVbOQxa--U": {
+    "expires_at": 1765646669.7422042,
+    "status": "pending",
+    "user_data": null
+  },
+  "8wNOwKin9HOzOigpn3CCyZM5DEmleJ-ddobXKQaSDsE": {
+    "expires_at": 1765646669.7912834,
+    "status": "authorized",
+    "user_data": {
+      "id": 2108700635,
+      "first_name": "Иван Корпусов",
+      "last_name": ".🥟",
+      "username": "MerdonGG",
+      "is_bot": false,
+      "language_code": "ru"
+    },
+    "authorized_at": 1765646384.03312
+  },
+  "KtzdxMAAXKa6OWvdMAOi8KmapO7HQm3F4v9wjyqj4AY": {
+    "expires_at": 1765646712.8487818,
+    "status": "authorized",
+    "user_data": {
+      "id": 2108700635,
+      "first_name": "Иван Корпусов",
+      "last_name": ".🥟",
+      "username": "MerdonGG",
+      "is_bot": false,
+      "language_code": "ru"
+    },
+    "authorized_at": 1765646416.0168397
+  }
+}

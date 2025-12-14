@@ -8,6 +8,7 @@ Backend/groq.env
 Backend/mulerouter.env
 Backend/openrouter.env
 Backend/yandex.env
+Backend/BOT_TOKEN.env
 
 # Python
 __pycache__/

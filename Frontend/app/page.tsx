@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
+import AuthMenu from './components/AuthMenu'
 
 interface Channel {
   id: string
@@ -13,6 +14,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 export default function Home() {
   const [isDarkTheme, setIsDarkTheme] = useState(false)
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
+  const [selectedProvider, setSelectedProvider] = useState<string>('qwen') // 'qwen' или 'yandex'
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [resultText, setResultText] = useState('')
@@ -21,6 +23,28 @@ export default function Home() {
   const [availableChannels, setAvailableChannels] = useState<Channel[]>([])
   const [selectedChannels, setSelectedChannels] = useState<string[]>([])
   const [currentArticleText, setCurrentArticleText] = useState('')
+  const [showAuthMenu, setShowAuthMenu] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [showGif, setShowGif] = useState(false)
+  const [gifKey, setGifKey] = useState(0)
+  
+  // Состояния для изображений
+  const [images, setImages] = useState<{
+    original: string | null
+    pexels: string | null
+    generated: string | null
+  } | null>(null)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  
+  // Состояния загрузки для каждого компонента
+  const [loadingOriginalImage, setLoadingOriginalImage] = useState(false)
+  const [loadingPexelsImage, setLoadingPexelsImage] = useState(false)
+  const [loadingGeneratedImage, setLoadingGeneratedImage] = useState(false)
+  
+  // Состояния готовности компонентов
+  const [originalImageReady, setOriginalImageReady] = useState(false)
+  const [pexelsImageReady, setPexelsImageReady] = useState(false)
+  const [generatedImageReady, setGeneratedImageReady] = useState(false)
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'light'
@@ -28,8 +52,24 @@ export default function Home() {
       setIsDarkTheme(true)
       document.body.classList.add('dark-theme')
     }
+    
+    // Проверяем сохраненного пользователя
+    const savedUser = localStorage.getItem('telegram_user')
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser))
+      } catch (e) {
+        console.error('Ошибка загрузки данных пользователя:', e)
+      }
+    }
+    
     loadChannels()
   }, [])
+
+  const handleLogin = (userData: any) => {
+    setUser(userData)
+    setShowAuthMenu(false)
+  }
 
   const toggleTheme = () => {
     const newTheme = !isDarkTheme
@@ -65,6 +105,10 @@ export default function Home() {
     setSelectedStyle(style)
   }
 
+  const handleProviderSelect = (provider: string) => {
+    setSelectedProvider(provider)
+  }
+
   const handleSubmit = async () => {
     if (!url.trim()) {
       alert('Пожалуйста, введите URL статьи')
@@ -76,9 +120,21 @@ export default function Home() {
       return
     }
 
+    // Сброс всех состояний
     setLoading(true)
-    setShowResult(false)
+    setShowResult(true) // Показываем секцию результатов сразу
     setShowChannels(false)
+    setResultText('')
+    setImages(null)
+    setSelectedImage(null)
+    setOriginalImageReady(false)
+    setPexelsImageReady(false)
+    setGeneratedImageReady(false)
+    
+    // Запускаем загрузку для всех компонентов
+    setLoadingOriginalImage(true)
+    setLoadingPexelsImage(true)
+    setLoadingGeneratedImage(true)
 
     try {
       const response = await fetch(`${API_URL}/api/rewrite-article`, {
@@ -88,25 +144,93 @@ export default function Home() {
         },
         body: JSON.stringify({
           url: url,
-          style: selectedStyle
+          style: selectedStyle,
+          provider: selectedProvider
         })
       })
 
       const data = await response.json()
 
       if (data.success) {
-        setCurrentArticleText(data.text)
-        setResultText(data.text)
-        setShowResult(true)
-        setShowChannels(false)
+        // Показываем текст сразу с анимацией
+        setTimeout(() => {
+          setCurrentArticleText(data.text || data.rewritten_text)
+          setResultText(data.text || data.rewritten_text)
+        }, 300)
+        
+        // Показываем изображения по мере готовности с задержками
+        const imagesData = data.images || {}
+        let currentImages: { original: string | null, pexels: string | null, generated: string | null } = {
+          original: null,
+          pexels: null,
+          generated: null
+        }
+        
+        // Оригинальное изображение
+        if (imagesData.original) {
+          setTimeout(() => {
+            currentImages.original = imagesData.original
+            setImages({ ...currentImages })
+            setLoadingOriginalImage(false)
+            setOriginalImageReady(true)
+            if (!selectedImage) {
+              setSelectedImage('original')
+            }
+          }, 600)
+        } else {
+          setTimeout(() => {
+            setLoadingOriginalImage(false)
+          }, 600)
+        }
+        
+        // Pexels изображение
+        if (imagesData.pexels) {
+          setTimeout(() => {
+            currentImages.pexels = imagesData.pexels
+            setImages(prev => ({ ...prev, pexels: imagesData.pexels }))
+            setLoadingPexelsImage(false)
+            setPexelsImageReady(true)
+            if (!selectedImage && !imagesData.original) {
+              setSelectedImage('pexels')
+            }
+          }, 900)
+        } else {
+          setTimeout(() => {
+            setLoadingPexelsImage(false)
+          }, 900)
+        }
+        
+        // Сгенерированное изображение
+        if (imagesData.generated) {
+          setTimeout(() => {
+            setImages(prev => ({ ...prev, generated: imagesData.generated }))
+            setLoadingGeneratedImage(false)
+            setGeneratedImageReady(true)
+            if (!selectedImage && !imagesData.original && !imagesData.pexels) {
+              setSelectedImage('generated')
+            }
+          }, 1200)
+        } else {
+          setTimeout(() => {
+            setLoadingGeneratedImage(false)
+          }, 1200)
+        }
+        
+        setLoading(false)
       } else {
         alert(`Ошибка: ${data.error}`)
+        setLoading(false)
+        setLoadingOriginalImage(false)
+        setLoadingPexelsImage(false)
+        setLoadingGeneratedImage(false)
       }
     } catch (error) {
       console.error('Ошибка рерайта статьи:', error)
       alert('Ошибка подключения к серверу. Убедитесь, что backend сервер запущен.')
-    } finally {
       setLoading(false)
+      setLoadingOriginalImage(false)
+      setLoadingPexelsImage(false)
+      setLoadingGeneratedImage(false)
     }
   }
 
@@ -164,6 +288,15 @@ export default function Home() {
     }
 
     try {
+      const imageUrlToSend = selectedImage && images && images[selectedImage as keyof typeof images] 
+        ? images[selectedImage as keyof typeof images] 
+        : null
+      
+      console.log('Отправка статьи в Telegram:')
+      console.log('- Выбранное изображение:', selectedImage)
+      console.log('- URL изображения:', imageUrlToSend)
+      console.log('- Длина текста:', currentArticleText.length)
+
       const response = await fetch(`${API_URL}/api/send-article`, {
         method: 'POST',
         headers: {
@@ -171,6 +304,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           article_text: currentArticleText,
+          image_url: imageUrlToSend,
           channels: selectedChannels
         })
       })
@@ -205,20 +339,90 @@ export default function Home() {
     }
   }
 
+  const handleLogoClick = () => {
+    // Предотвращаем повторный клик во время проигрывания гифки
+    if (showGif) {
+      console.log('Гифка уже воспроизводится, игнорируем клик')
+      return
+    }
+    
+    console.log('Клик по логотипу, запускаем гифку')
+    
+    // Сначала скрываем, чтобы сбросить состояние
+    setShowGif(false)
+    setGifKey(prev => prev + 1)
+    
+    // Затем показываем гифку через небольшую задержку для правильной перезагрузки
+    setTimeout(() => {
+      setShowGif(true)
+      console.log('Показываем гифку')
+    }, 50)
+    
+    // Возвращаем логотип через 11.24 секунды (полная длительность гифки)
+    setTimeout(() => {
+      setShowGif(false)
+      console.log('Гифка завершена, возвращаем логотип')
+    }, 11290) // 11240 + 50 (задержка показа)
+  }
+
+  const handleGifLoad = () => {
+    console.log('Гифка успешно загружена')
+  }
+
+  const handleGifError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    console.error('Ошибка загрузки гифки')
+    const target = e.target as HTMLImageElement
+    // Пробуем загрузить без query параметра
+    target.src = '/assets/горение.gif'
+  }
+
   return (
     <div className="container">
       <div className="header">
-        <button className="theme-toggle" onClick={toggleTheme}>
-          {isDarkTheme ? '☀️ Светлая' : '🌙 Тёмная'}
-        </button>
-        <Image
-          src="/logo.png"
-          alt="Phoenix Lab Logo"
-          width={120}
-          height={120}
-          className="logo"
-          priority
-        />
+        <div className="header-controls">
+          <button className="auth-btn" onClick={() => setShowAuthMenu(true)}>
+            {user ? `👤 ${user.first_name}` : '🔐 Войти'}
+          </button>
+          <button className="theme-toggle" onClick={toggleTheme}>
+            {isDarkTheme ? '☀️ Светлая' : '🌙 Тёмная'}
+          </button>
+        </div>
+        <div 
+          className="logo-container"
+          onClick={handleLogoClick}
+          style={{ 
+            cursor: showGif ? 'default' : 'pointer'
+          }}
+        >
+          {showGif ? (
+            <img 
+              key={gifKey}
+              src="/assets/горение.gif"
+              alt="Phoenix Burning Animation" 
+              className="logo"
+              width={120}
+              height={120}
+              onLoad={handleGifLoad}
+              onError={handleGifError}
+              style={{ 
+                width: '120px', 
+                height: '120px', 
+                objectFit: 'contain', 
+                pointerEvents: 'none',
+                display: 'block'
+              }}
+            />
+          ) : (
+            <Image 
+              src="/logo.png"
+              alt="Phoenix Lab Logo" 
+              className="logo"
+              width={120}
+              height={120}
+              priority
+            />
+          )}
+        </div>
         <h1>Phoenix Lab</h1>
         <p className="subtitle">AI Рерайт Статей</p>
       </div>
@@ -235,6 +439,24 @@ export default function Home() {
             onChange={(e) => setUrl(e.target.value)}
             onKeyPress={handleKeyPress}
           />
+        </div>
+
+        <div className="provider-section">
+          <label>Провайдер AI</label>
+          <div className="style-buttons">
+            <button
+              className={`style-btn ${selectedProvider === 'qwen' ? 'active' : ''}`}
+              onClick={() => handleProviderSelect('qwen')}
+            >
+              Qwen
+            </button>
+            <button
+              className={`style-btn ${selectedProvider === 'yandex' ? 'active' : ''}`}
+              onClick={() => handleProviderSelect('yandex')}
+            >
+              YandexGPT
+            </button>
+          </div>
         </div>
 
         <div className="style-section">
@@ -280,39 +502,170 @@ export default function Home() {
           Рерайт статьи
         </button>
 
-        <div className={`loading ${loading ? 'show' : ''}`}>
-          <div className="spinner"></div>
-          <p>Обработка статьи...</p>
-        </div>
+        {loading && (
+          <div className="loading show">
+            <div className="spinner"></div>
+            <p>Обработка статьи...</p>
+          </div>
+        )}
 
         <div className={`result-section ${showResult ? 'show' : ''}`}>
           <div className="result-box">
-            <div className="result-text">{resultText}</div>
-            {showChannels && (
-              <div className="channels-selection">
-                <label style={{ display: 'block', marginBottom: '10px', color: '#ffffff' }}>
-                  Выберите каналы для отправки:
-                </label>
-                <div className="channels-list">
-                  {availableChannels.map((channel) => (
-                    <label key={channel.id}>
-                      <input
-                        type="checkbox"
-                        checked={selectedChannels.includes(channel.id)}
-                        onChange={() => handleChannelToggle(channel.id)}
-                      />
-                      {channel.name || channel.id}
-                    </label>
-                  ))}
+            <div className="result-title">Результат рерайта:</div>
+            
+            {/* Текст статьи */}
+            {resultText && (
+              <div className="result-text fade-in">{resultText}</div>
+            )}
+            
+            {/* Выбор изображения с анимациями загрузки */}
+            <div className="image-selection">
+              <h3 className="image-selection-title">Выберите изображение для статьи:</h3>
+              <div className="image-options">
+                {/* Оригинальное изображение */}
+                {loadingOriginalImage ? (
+                  <div className="image-option skeleton-image">
+                    <div className="skeleton-image-placeholder">
+                      <div className="spinner"></div>
+                    </div>
+                    <div className="image-label skeleton-label">Загрузка...</div>
+                  </div>
+                ) : originalImageReady && images?.original ? (
+                  <div 
+                    className={`image-option fade-in ${selectedImage === 'original' ? 'selected' : ''}`}
+                    onClick={() => setSelectedImage('original')}
+                  >
+                    <img src={images.original} alt="Оригинальное изображение" />
+                    <div className="image-label">Оригинальное</div>
+                  </div>
+                ) : null}
+                
+                {/* Pexels изображение */}
+                {loadingPexelsImage ? (
+                  <div className="image-option skeleton-image">
+                    <div className="skeleton-image-placeholder">
+                      <div className="spinner"></div>
+                    </div>
+                    <div className="image-label skeleton-label">Загрузка...</div>
+                  </div>
+                ) : pexelsImageReady && images?.pexels ? (
+                  <div 
+                    className={`image-option fade-in ${selectedImage === 'pexels' ? 'selected' : ''}`}
+                    onClick={() => setSelectedImage('pexels')}
+                  >
+                    <img src={images.pexels} alt="Изображение из API" />
+                    <div className="image-label">Из API</div>
+                  </div>
+                ) : null}
+                
+                {/* Сгенерированное изображение */}
+                {loadingGeneratedImage ? (
+                  <div className="image-option skeleton-image">
+                    <div className="skeleton-image-placeholder">
+                      <div className="spinner"></div>
+                    </div>
+                    <div className="image-label skeleton-label">Генерация...</div>
+                  </div>
+                ) : generatedImageReady && images?.generated ? (
+                  <div 
+                    className={`image-option fade-in ${selectedImage === 'generated' ? 'selected' : ''}`}
+                    onClick={() => setSelectedImage('generated')}
+                  >
+                    <img src={images.generated} alt="Сгенерированное изображение" />
+                    <div className="image-label">Сгенерированное</div>
+                  </div>
+                ) : null}
+                
+                {/* Сообщение, если все изображения загружены, но ничего не найдено */}
+                {!loadingOriginalImage && !loadingPexelsImage && !loadingGeneratedImage && 
+                 !images?.original && !images?.pexels && !images?.generated && (
+                  <div className="no-images-message fade-in">
+                    <p>⚠️ Изображения не найдены. Статья будет отправлена без изображения.</p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Превью выбранного изображения */}
+              {selectedImage && images && images[selectedImage as keyof typeof images] && (
+                <div className="selected-image-preview fade-in">
+                  <p>Выбрано: <strong>{selectedImage === 'original' ? 'Оригинальное' : selectedImage === 'pexels' ? 'Из Pexels' : 'Сгенерированное'}</strong></p>
+                  <img 
+                    src={images[selectedImage as keyof typeof images]!} 
+                    alt="Выбранное изображение" 
+                    className="preview-image"
+                  />
                 </div>
-                <button className="submit-btn" onClick={handleSendTelegram} style={{ marginTop: '10px' }}>
-                  Отправить в Telegram
-                </button>
+              )}
+            </div>
+            
+            {/* Кнопка отправки в Telegram */}
+            {resultText && (
+              <div style={{ marginTop: '20px' }}>
+                {!showChannels ? (
+                  <button 
+                    className="submit-btn fade-in" 
+                    onClick={async () => {
+                      if (!currentArticleText) {
+                        alert('Сначала обработайте статью')
+                        return
+                      }
+                      
+                      // Перезагружаем каналы перед показом
+                      try {
+                        const response = await fetch(`${API_URL}/api/channels`)
+                        const data = await response.json()
+                        
+                        if (data.success && data.channels && data.channels.length > 0) {
+                          setAvailableChannels(data.channels)
+                          setShowChannels(true)
+                          setSelectedChannels([])
+                        } else {
+                          alert('Каналы не настроены. Используйте бота для добавления каналов.')
+                        }
+                      } catch (error) {
+                        console.error('Ошибка загрузки каналов:', error)
+                        alert('Ошибка подключения к серверу. Убедитесь, что backend сервер запущен.')
+                      }
+                    }}
+                  >
+                    Отправить в Telegram каналы
+                  </button>
+                ) : (
+                  <div className="channels-selection">
+                    <label style={{ display: 'block', marginBottom: '10px', color: '#ffffff' }}>
+                      Выберите каналы для отправки:
+                    </label>
+                    <div className="channels-list">
+                      {availableChannels.map((channel) => (
+                        <label key={channel.id}>
+                          <input
+                            type="checkbox"
+                            checked={selectedChannels.includes(channel.id)}
+                            onChange={() => handleChannelToggle(channel.id)}
+                          />
+                          {channel.name || channel.id}
+                        </label>
+                      ))}
+                    </div>
+                    <button className="submit-btn" onClick={handleSendTelegram} style={{ marginTop: '10px' }}>
+                      Отправить в Telegram
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Меню авторизации */}
+      {showAuthMenu && (
+        <AuthMenu 
+          isDark={isDarkTheme} 
+          onClose={() => setShowAuthMenu(false)}
+          onLogin={handleLogin}
+        />
+      )}
     </div>
   )
 }
