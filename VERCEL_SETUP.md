@@ -3,17 +3,21 @@
 ## ✅ Исправлено
 
 1. **TypeScript ошибка исправлена** - обновлена логика обновления состояния изображений
-2. **Конфигурация Vercel исправлена** - команды в `vercel.json` теперь переходят в папку `Frontend` перед выполнением
+2. **Next.js обновлен** - версия обновлена с `14.0.4` до `^14.2.15` для устранения критической уязвимости
+3. **Корневой `vercel.json` удален** - он мешал Vercel автоматически определять Next.js. Теперь нужно настроить Root Directory в Dashboard.
 
 ## Проблема: Быстрая сборка (98-103ms)
 
 Если сборка завершается слишком быстро, это означает, что Vercel не находит папку `Frontend` или не выполняет правильную сборку.
 
-## ⚠️ ВАЖНО: Настройка Root Directory в Vercel Dashboard
+## ⚠️ КРИТИЧЕСКИ ВАЖНО: Настройка Root Directory в Vercel Dashboard
 
-**Это обязательный шаг!** Vercel должен знать, где находится Next.js приложение.
+**Это ОБЯЗАТЕЛЬНЫЙ шаг!** Без этого Vercel не сможет найти Next.js и выдаст ошибку:
+```
+Error: No Next.js version detected. Make sure your package.json has "next" in either "dependencies" or "devDependencies".
+```
 
-### Шаги:
+### Шаги (ОБЯЗАТЕЛЬНО):
 
 1. Откройте проект на [vercel.com](https://vercel.com)
 2. Перейдите в **Settings → General**
@@ -21,25 +25,24 @@
 4. Нажмите **Edit**
 5. Введите: `Frontend` (или выберите из списка)
 6. Нажмите **Save**
-7. Перезапустите деплой:
+7. **Убедитесь, что корневой `vercel.json` удален** (он уже удален из репозитория)
+8. Перезапустите деплой:
    - Перейдите в **Deployments**
    - Найдите последний деплой
    - Нажмите **⋯** (три точки)
    - Выберите **Redeploy**
 
+**Почему это важно:** Vercel автоматически определяет Next.js только если `package.json` находится в корневой директории проекта (Root Directory). Если Root Directory = `Frontend`, то Vercel будет искать `package.json` в папке `Frontend` и автоматически определит Next.js.
+
 ## Файлы конфигурации
 
-- **`vercel.json`** (в корне) - команды сборки с переходом в папку `Frontend`:
-  ```json
-  {
-    "buildCommand": "cd Frontend && npm run build",
-    "installCommand": "cd Frontend && npm install",
-    "outputDirectory": "Frontend/.next"
-  }
-  ```
-- **`Frontend/vercel.json`** - настройки для Next.js приложения (используется, если Root Directory = `Frontend`)
+- **`Frontend/vercel.json`** - настройки для Next.js приложения (опционально, Vercel может работать и без него)
+- **Корневой `vercel.json` НЕ НУЖЕН** - удалите его, если он есть. Vercel автоматически определит Next.js, если Root Directory настроен правильно.
 
-**Примечание:** Если Root Directory настроен в Dashboard как `Frontend`, то корневой `vercel.json` может быть не нужен, так как Vercel будет работать напрямую из папки `Frontend`.
+**Важно:** После настройки Root Directory = `Frontend` в Dashboard, Vercel будет:
+- Автоматически находить `package.json` в папке `Frontend`
+- Автоматически определять Next.js
+- Выполнять `npm install` и `npm run build` в правильной директории
 
 ## Проверка правильной сборки
 
