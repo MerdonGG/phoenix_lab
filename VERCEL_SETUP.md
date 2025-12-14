@@ -3,7 +3,7 @@
 ## ✅ Исправлено
 
 1. **TypeScript ошибка исправлена** - обновлена логика обновления состояния изображений
-2. **Конфигурация Vercel исправлена** - удалено неподдерживаемое свойство `root` из `vercel.json`
+2. **Конфигурация Vercel исправлена** - команды в `vercel.json` теперь переходят в папку `Frontend` перед выполнением
 
 ## Проблема: Быстрая сборка (98-103ms)
 
@@ -29,10 +29,17 @@
 
 ## Файлы конфигурации
 
-- **`vercel.json`** (в корне) - базовые настройки сборки (без свойства `root`, так как оно не поддерживается)
-- **`Frontend/vercel.json`** - настройки для Next.js приложения
+- **`vercel.json`** (в корне) - команды сборки с переходом в папку `Frontend`:
+  ```json
+  {
+    "buildCommand": "cd Frontend && npm run build",
+    "installCommand": "cd Frontend && npm install",
+    "outputDirectory": "Frontend/.next"
+  }
+  ```
+- **`Frontend/vercel.json`** - настройки для Next.js приложения (используется, если Root Directory = `Frontend`)
 
-**Важно:** Свойство `root` не поддерживается в `vercel.json`. Root Directory нужно настраивать только через веб-интерфейс Vercel!
+**Примечание:** Если Root Directory настроен в Dashboard как `Frontend`, то корневой `vercel.json` может быть не нужен, так как Vercel будет работать напрямую из папки `Frontend`.
 
 ## Проверка правильной сборки
 
