@@ -4,7 +4,7 @@
 
 1. **TypeScript ошибка исправлена** - обновлена логика обновления состояния изображений
 2. **Next.js обновлен** - версия обновлена с `14.0.4` до `^14.2.15` для устранения критической уязвимости
-3. **Корневой `vercel.json` удален** - он мешал Vercel автоматически определять Next.js. Теперь нужно настроить Root Directory в Dashboard.
+3. **Создан `vercel.json` в корне** - конфигурация для монорепозитория с явными командами для папки `Frontend`
 
 ## Проблема: Быстрая сборка (98-103ms)
 
@@ -36,13 +36,15 @@ Error: No Next.js version detected. Make sure your package.json has "next" in ei
 
 ## Файлы конфигурации
 
-- **`Frontend/vercel.json`** - настройки для Next.js приложения (опционально, Vercel может работать и без него)
-- **Корневой `vercel.json` НЕ НУЖЕН** - удалите его, если он есть. Vercel автоматически определит Next.js, если Root Directory настроен правильно.
+- **`vercel.json`** (в корне) - конфигурация для монорепозитория, указывает Vercel на Next.js в папке `Frontend`
+- **`Frontend/vercel.json`** - настройки для Next.js приложения (опционально)
 
-**Важно:** После настройки Root Directory = `Frontend` в Dashboard, Vercel будет:
-- Автоматически находить `package.json` в папке `Frontend`
-- Автоматически определять Next.js
-- Выполнять `npm install` и `npm run build` в правильной директории
+**Текущая конфигурация:**
+- Создан `vercel.json` в корне с явными командами для папки `Frontend`
+- Команды: `cd Frontend && npm install` и `cd Frontend && npm run build`
+- Указан `framework: "nextjs"` и `outputDirectory: "Frontend/.next"`
+
+**⚠️ ВАЖНО:** Даже с этой конфигурацией может потребоваться настройка Root Directory в Dashboard. Если сборка всё ещё завершается за 100ms, обязательно настройте Root Directory = `Frontend` в Vercel Dashboard (см. инструкцию выше).
 
 ## Проверка правильной сборки
 
