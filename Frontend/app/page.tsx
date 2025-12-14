@@ -27,7 +27,7 @@ export default function Home() {
   const [user, setUser] = useState<any>(null)
   const [showGif, setShowGif] = useState(false)
   const [gifKey, setGifKey] = useState(0)
-  
+
   // Состояния для изображений
   const [images, setImages] = useState<{
     original: string | null
@@ -187,7 +187,7 @@ export default function Home() {
         if (imagesData.pexels) {
           setTimeout(() => {
             currentImages.pexels = imagesData.pexels
-            setImages(prev => ({ ...prev, pexels: imagesData.pexels }))
+            setImages(prev => prev ? { ...prev, pexels: imagesData.pexels } : { original: null, pexels: imagesData.pexels, generated: null })
             setLoadingPexelsImage(false)
             setPexelsImageReady(true)
             if (!selectedImage && !imagesData.original) {
@@ -203,7 +203,7 @@ export default function Home() {
         // Сгенерированное изображение
         if (imagesData.generated) {
           setTimeout(() => {
-            setImages(prev => ({ ...prev, generated: imagesData.generated }))
+            setImages(prev => prev ? { ...prev, generated: imagesData.generated } : { original: null, pexels: null, generated: imagesData.generated })
             setLoadingGeneratedImage(false)
             setGeneratedImageReady(true)
             if (!selectedImage && !imagesData.original && !imagesData.pexels) {
@@ -631,25 +631,25 @@ export default function Home() {
                     Отправить в Telegram каналы
                   </button>
                 ) : (
-                  <div className="channels-selection">
-                    <label style={{ display: 'block', marginBottom: '10px', color: '#ffffff' }}>
-                      Выберите каналы для отправки:
+              <div className="channels-selection">
+                <label style={{ display: 'block', marginBottom: '10px', color: '#ffffff' }}>
+                  Выберите каналы для отправки:
+                </label>
+                <div className="channels-list">
+                  {availableChannels.map((channel) => (
+                    <label key={channel.id}>
+                      <input
+                        type="checkbox"
+                        checked={selectedChannels.includes(channel.id)}
+                        onChange={() => handleChannelToggle(channel.id)}
+                      />
+                      {channel.name || channel.id}
                     </label>
-                    <div className="channels-list">
-                      {availableChannels.map((channel) => (
-                        <label key={channel.id}>
-                          <input
-                            type="checkbox"
-                            checked={selectedChannels.includes(channel.id)}
-                            onChange={() => handleChannelToggle(channel.id)}
-                          />
-                          {channel.name || channel.id}
-                        </label>
-                      ))}
-                    </div>
-                    <button className="submit-btn" onClick={handleSendTelegram} style={{ marginTop: '10px' }}>
-                      Отправить в Telegram
-                    </button>
+                  ))}
+                </div>
+                <button className="submit-btn" onClick={handleSendTelegram} style={{ marginTop: '10px' }}>
+                  Отправить в Telegram
+                </button>
                   </div>
                 )}
               </div>

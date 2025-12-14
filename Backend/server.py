@@ -16,8 +16,8 @@ import html as html_module
 
 # Опциональный импорт aiogram (нужен только для отправки статей)
 try:
-    from aiogram import Bot
-    from aiogram.exceptions import TelegramAPIError
+from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
     from aiogram.types import InputFile
     AIOGRAM_AVAILABLE = True
 except ImportError:
@@ -1427,8 +1427,8 @@ def send_article():
                                 except Exception as download_error:
                                     # Если и скачивание не помогло, отправляем только текст
                                     logger.warning(f"Не удалось отправить фото (скачивание тоже не помогло) в {channel['name']}: {download_error}, отправляем только текст")
-                                    await current_bot.send_message(
-                                        chat_id=channel['id'],
+                        await current_bot.send_message(
+                            chat_id=channel['id'],
                                         text=clean_article_text,
                                         parse_mode=None  # Не используем HTML парсинг
                                     )
@@ -1438,7 +1438,7 @@ def send_article():
                                 chat_id=channel['id'],
                                 text=clean_article_text,
                                 parse_mode=None  # Не используем HTML парсинг
-                            )
+                        )
                         success_count += 1
                         logger.info(f"Статья отправлена в канал: {channel['name']} ({channel['id']})")
                     except TelegramAPIError as e:
