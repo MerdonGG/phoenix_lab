@@ -9,4 +9,5 @@ lxml==5.1.0
 AsyncKandinsky
 nest-asyncio
 aiohttp
+gunicorn
 

@@ -38,3 +38,4 @@ echo.
 echo Для остановки используйте stop_all.bat
 pause
 
+

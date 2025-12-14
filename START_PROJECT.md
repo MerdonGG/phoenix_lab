@@ -147,3 +147,4 @@ TelegramBot\start_bot.bat
 - `Frontend/start_frontend.bat` - запуск только фронтенда
 - `TelegramBot/start_bot.bat` - запуск только бота
 
+
